@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -14,10 +15,17 @@ import { OtpChallenge } from './entities/otp-challenge.entity';
 const CODE_TTL_SECONDS = 5 * 60;
 const RESEND_COOLDOWN_SECONDS = 60;
 const MAX_ATTEMPTS = 5;
+// Llamada a Meta: 2 intentos de 6 s + 1 s de pausa = 13 s, por debajo de los
+// 15 s con los que auth-service espera a este servicio.
+const WHATSAPP_ATTEMPTS = 2;
+const WHATSAPP_TIMEOUT_MS = 6_000;
+const WHATSAPP_RETRY_DELAY_MS = 1_000;
 type OtpPurpose = 'registration' | 'password_reset';
 
 @Injectable()
 export class OtpService {
+  private readonly logger = new Logger('OtpService');
+
   constructor(
     @InjectRepository(OtpChallenge)
     private readonly challenges: Repository<OtpChallenge>,
@@ -130,9 +138,8 @@ export class OtpService {
       },
     };
 
-    let response: Response;
-    try {
-      response = await fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
+    const request = () =>
+      fetch(`https://graph.facebook.com/${version}/${phoneNumberId}/messages`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -144,15 +151,36 @@ export class OtpService {
           to: phone,
           ...message,
         }),
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(WHATSAPP_TIMEOUT_MS),
       });
-    } catch {
-      throw new ServiceUnavailableException('No se pudo contactar a WhatsApp Cloud API.');
+
+    // Solo se reintentan fallos de red (DNS, conexión, tiempo agotado); si Meta
+    // responde, aunque sea con error, no se reintenta. Un reintento tras un
+    // tiempo agotado puede duplicar el mensaje, pero lleva el mismo código.
+    let response: Response | null = null;
+    for (let attempt = 1; attempt <= WHATSAPP_ATTEMPTS && !response; attempt++) {
+      try {
+        response = await request();
+      } catch (error) {
+        const cause = (error as any)?.cause;
+        this.logger.warn(
+          `WhatsApp Cloud API no respondió (intento ${attempt}/${WHATSAPP_ATTEMPTS}): ` +
+            `${(error as Error).name}: ${(error as Error).message}` +
+            (cause ? ` [${cause.code ?? cause.message ?? cause}]` : ''),
+        );
+        if (attempt < WHATSAPP_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, WHATSAPP_RETRY_DELAY_MS));
+        }
+      }
+    }
+    if (!response) {
+      throw new ServiceUnavailableException('No se pudo contactar a WhatsApp Cloud API. Inténtalo de nuevo.');
     }
 
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
       const metaMessage = typeof payload?.error?.message === 'string' ? payload.error.message : '';
+      this.logger.warn(`WhatsApp Cloud API respondió ${response.status}: ${metaMessage || 'sin mensaje'}`);
       throw new ServiceUnavailableException(
         metaMessage
           ? `WhatsApp Cloud API rechazó el mensaje: ${metaMessage}`
