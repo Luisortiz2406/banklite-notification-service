@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
 import { NotificationsService } from '../notifications/notifications.service';
 
+const RECONNECT_DELAY_MS = 5000;
+
 /**
  * A diferencia de account-service (que solo escucha 'identity.verified'),
  * este consumer se suscribe con routing key '#' a TODO lo que se publique
@@ -14,13 +16,16 @@ import { NotificationsService } from '../notifications/notifications.service';
  *
  * Igual que en el resto del proyecto: si RabbitMQ no está disponible, el
  * servicio sigue arriba en modo degradado (solo deja de recibir eventos;
- * POST /notifications interno sigue funcionando igual).
+ * POST /notifications interno sigue funcionando igual) y reintenta la
+ * conexión en segundo plano, también si se cae después de arrancar.
  */
 @Injectable()
 export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('EventConsumer[notification-service]');
   private connection: amqplib.ChannelModel | null = null;
   private channel: amqplib.Channel | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private destroyed = false;
 
   constructor(
     private readonly config: ConfigService,
@@ -32,35 +37,63 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async connect() {
+    if (this.destroyed) return;
     const url = this.config.get<string>('RABBITMQ_URL');
     if (!url) {
       this.logger.warn('RABBITMQ_URL no configurada. No se consumirán eventos.');
       return;
     }
     try {
-      this.connection = await amqplib.connect(url);
-      this.channel = await this.connection.createChannel();
+      const connection = await amqplib.connect(url);
+      this.connection = connection;
+      // Sin listener de 'error', un fallo de la conexión tumbaría el proceso.
+      connection.on('error', (err) => this.logger.warn(`Error en la conexión con RabbitMQ: ${err.message}`));
+      connection.on('close', () => {
+        this.connection = null;
+        this.channel = null;
+        this.logger.warn('Conexión con RabbitMQ cerrada.');
+        this.scheduleReconnect();
+      });
+      const channel = await connection.createChannel();
+      channel.on('error', (err) => this.logger.warn(`Error en el canal de RabbitMQ: ${err.message}`));
+      channel.on('close', () => {
+        this.channel = null;
+        if (!this.destroyed) connection.close().catch(() => undefined);
+      });
+      this.channel = channel;
 
       const exchange = this.config.get<string>('RABBITMQ_EXCHANGE', 'banklite.events');
       const queue = this.config.get<string>('RABBITMQ_QUEUE', 'notification-service.all-events');
 
-      await this.channel.assertExchange(exchange, 'topic', { durable: true });
-      await this.channel.assertQueue(queue, { durable: true });
-      await this.channel.bindQueue(queue, exchange, '#');
+      await channel.assertExchange(exchange, 'topic', { durable: true });
+      await channel.assertQueue(queue, { durable: true });
+      await channel.bindQueue(queue, exchange, '#');
 
-      await this.channel.consume(queue, (msg) => this.handleMessage(msg), { noAck: false });
+      await channel.consume(queue, (msg) => this.handleMessage(channel, msg), { noAck: false });
 
       this.logger.log(`Escuchando TODOS los eventos ('#') en cola '${queue}'.`);
     } catch (err) {
       this.logger.warn(
-        `No se pudo conectar a RabbitMQ (${(err as Error).message}). Reintentando en 5s.`,
+        `No se pudo conectar a RabbitMQ (${(err as Error).message}). Reintentando en ${RECONNECT_DELAY_MS / 1000}s.`,
       );
-      setTimeout(() => this.connect(), 5000);
+      await this.connection?.close().catch(() => undefined);
+      this.connection = null;
+      this.channel = null;
+      this.scheduleReconnect();
     }
   }
 
-  private async handleMessage(msg: amqplib.ConsumeMessage | null) {
-    if (!msg || !this.channel) return;
+  private scheduleReconnect() {
+    if (this.destroyed || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect();
+    }, RECONNECT_DELAY_MS);
+  }
+
+  // Se usa el canal por el que llegó el mensaje: el ack debe ir por ese mismo canal.
+  private async handleMessage(channel: amqplib.Channel, msg: amqplib.ConsumeMessage | null) {
+    if (!msg) return;
     try {
       const content = JSON.parse(msg.content.toString());
       const event: string | undefined = content?.event ?? msg.fields.routingKey;
@@ -69,20 +102,26 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
 
       if (!event || !idUser) {
         this.logger.warn(`Evento sin 'event' o sin 'idUser' en el payload, descartado: ${msg.fields.routingKey}`);
-        this.channel.ack(msg);
+        channel.ack(msg);
         return;
       }
 
       await this.notifications.handleEvent(idUser, event, content.data ?? {}, occurredAt);
       this.logger.log(`Evento '${event}' procesado para idUser=${idUser}`);
-      this.channel.ack(msg);
+      channel.ack(msg);
     } catch (err) {
       this.logger.error(`Error procesando evento: ${(err as Error).message}`);
-      this.channel.nack(msg, false, false);
+      try {
+        channel.nack(msg, false, false);
+      } catch {
+        // Canal cerrado: RabbitMQ reentregará el mensaje al reconectar.
+      }
     }
   }
 
   async onModuleDestroy() {
+    this.destroyed = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
   }

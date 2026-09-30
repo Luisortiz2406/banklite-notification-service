@@ -31,6 +31,11 @@ export class NotificationsService {
 
     for (const rule of rules) {
       if (rule.when && !rule.when(payload)) continue;
+      // Sin destinatario no se crea la fila de email (quedaría 'pending' para siempre).
+      if (rule.channel === 'email' && !this.emailRecipient(payload)) {
+        this.logger.warn(`Evento '${event}' mapeado a email pero el payload no trae 'email'. Se omite ese canal.`);
+        continue;
+      }
 
       const dedupeKey = `${idUser}:${event}:${rule.channel}:${occurredAt}`;
       const existing = await this.repo.findOne({ where: { dedupeKey } });
@@ -72,14 +77,14 @@ export class NotificationsService {
     return created;
   }
 
+  private emailRecipient(payload: Record<string, unknown>): string | null {
+    const to = payload.email ?? payload.notifyEmail;
+    return typeof to === 'string' && to.trim() ? to.trim() : null;
+  }
+
   private async deliverEmail(row: Notification, payload: Record<string, unknown>) {
-    const to = (payload.email as string | undefined) ?? (payload.notifyEmail as string | undefined);
-    if (!to) {
-      this.logger.warn(
-        `Evento '${row.event}' mapeado a canal email pero el payload no trae 'email'. Se deja pending.`,
-      );
-      return row;
-    }
+    const to = this.emailRecipient(payload);
+    if (!to) return row;
     const sent = await this.mailer.send(to, row.title, row.body);
     row.status = sent ? 'sent' : 'failed';
     return this.repo.save(row);

@@ -82,8 +82,13 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
     },
   ],
 
-  // KYC aprobado: confirmación únicamente por correo.
-  'identity.verified': [
+  // KYC aprobado: lo consume Account Service para activar cuentas. No se notifica
+  // aquí porque en el registro la identidad se verifica ANTES de conocer el
+  // correo; la confirmación por email sale con 'identity.email_confirmed'.
+  'identity.verified': [],
+
+  // KYC Service lo publica cuando el correo verificado llega a una identidad aprobada.
+  'identity.email_confirmed': [
     {
       channel: 'email',
       build: (p) => {
@@ -119,10 +124,20 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
           ? new Intl.NumberFormat('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(p.amount))
           : '0,00';
         const currency = p.currency === 'USD' ? 'USD' : 'COP';
-        const isCredit = p.type === 'credit';
+        const lastFour = (value: unknown) =>
+          typeof value === 'string' && value.length >= 4 ? ` ····${value.slice(-4)}` : '';
+        if (p.type === 'credit') {
+          return { title: 'Abono recibido', body: `Se abonaron ${amount} ${currency} a tu cuenta.` };
+        }
+        if (p.direction === 'in') {
+          return {
+            title: 'Transferencia recibida',
+            body: `Recibiste ${amount} ${currency} desde la cuenta${lastFour(p.sourceAccountNumber)}.`,
+          };
+        }
         return {
-          title: isCredit ? 'Abono recibido' : 'Transferencia realizada',
-          body: `${isCredit ? 'Se abonaron' : 'Enviaste'} ${amount} ${currency} a tu cuenta.`,
+          title: 'Transferencia realizada',
+          body: `Enviaste ${amount} ${currency} a la cuenta${lastFour(p.destinationAccountNumber)}.`,
         };
       },
     },

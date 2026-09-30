@@ -16,7 +16,8 @@ export class MailerService {
     if (!user || !pass) return null;
     this.transporter = nodemailer.createTransport({
       service: 'gmail',
-      auth: { user, pass },
+      // Gmail muestra la App Password con espacios; se quitan igual que en auth-service.
+      auth: { user, pass: pass.replace(/\s+/g, '') },
     });
     return this.transporter;
   }

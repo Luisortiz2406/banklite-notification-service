@@ -7,12 +7,14 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+// Índice compuesto a nivel de clase: un reto por usuario y propósito
+// (registro y recuperación de clave conviven para el mismo idUser).
 @Entity('otp_challenges')
+@Index(['idUser', 'purpose'], { unique: true })
 export class OtpChallenge {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index(['idUser', 'purpose'], { unique: true })
   @Column({ name: 'id_user', type: 'uuid' })
   idUser: string;
 
