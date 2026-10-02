@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventConsumerService } from './events/event-consumer.service';
 import { HealthController } from './health.controller';
 import { Notification } from './notifications/entities/notification.entity';
+import { UserContact } from './notifications/entities/user-contact.entity';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OtpChallenge } from './otp/entities/otp-challenge.entity';
 import { OtpController } from './otp/otp.controller';
@@ -18,7 +19,7 @@ import { InternalKeyGuard } from './common/guards/internal-key.guard';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
-        entities: [Notification, OtpChallenge],
+        entities: [Notification, UserContact, OtpChallenge],
         synchronize: true, // demo académica; en producción usar migraciones
         logging: false,
       }),

@@ -24,6 +24,36 @@ function escapeHtml(value: string): string {
   })[character] as string);
 }
 
+function displayNameOf(p: Record<string, any>): string {
+  return typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
+    ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
+    : 'Cliente';
+}
+
+function formatAmount(value: unknown): string {
+  return Number.isFinite(Number(value))
+    ? new Intl.NumberFormat('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value))
+    : '0,00';
+}
+
+function currencyOf(p: Record<string, any>): string {
+  return p.currency === 'USD' ? 'USD' : 'COP';
+}
+
+function maskedAccount(value: unknown): string {
+  return typeof value === 'string' && value.length >= 4 ? ` ····${value.slice(-4)}` : '';
+}
+
+function formatBogotaDate(value: unknown): string {
+  const date = typeof value === 'string' ? new Date(value) : new Date();
+  const valid = Number.isNaN(date.getTime()) ? new Date() : date;
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+    timeZone: 'America/Bogota',
+  }).format(valid);
+}
+
 /**
  * Mapa evento -> reglas por canal. Este archivo es la "tabla" del diseño que
  * hablamos: un mismo evento puede generar 0, 1 o varias filas (una por canal),
@@ -116,28 +146,73 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
     },
   ],
 
+  // Publicado por Ledger (vía outbox) una vez por cada titular afectado.
   'transaction.completed': [
     {
       channel: 'in_app',
       build: (p) => {
-        const amount = Number.isFinite(Number(p.amount))
-          ? new Intl.NumberFormat('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(p.amount))
-          : '0,00';
-        const currency = p.currency === 'USD' ? 'USD' : 'COP';
-        const lastFour = (value: unknown) =>
-          typeof value === 'string' && value.length >= 4 ? ` ····${value.slice(-4)}` : '';
-        if (p.type === 'credit') {
-          return { title: 'Abono recibido', body: `Se abonaron ${amount} ${currency} a tu cuenta.` };
+        const amount = `${formatAmount(p.amount)} ${currencyOf(p)}`;
+        const incoming = p.direction === 'in';
+        switch (p.type) {
+          case 'credit':
+            return { title: 'Abono recibido', body: `Se abonaron ${amount} a tu cuenta.` };
+          case 'deposit':
+            return { title: 'Consignación recibida', body: `Se consignaron ${amount} a tu cuenta.` };
+          case 'debit':
+            return { title: 'Cargo a tu cuenta', body: `Se debitaron ${amount} de tu cuenta.` };
+          case 'reversal':
+            return incoming
+              ? { title: 'Reverso recibido', body: `Se reintegraron ${amount} a tu cuenta.` }
+              : { title: 'Reverso aplicado', body: `Se reversaron ${amount} de tu cuenta.` };
+          default:
+            return incoming
+              ? { title: 'Transferencia recibida', body: `Recibiste ${amount} desde la cuenta${maskedAccount(p.sourceAccountNumber)}.` }
+              : { title: 'Transferencia realizada', body: `Enviaste ${amount} a la cuenta${maskedAccount(p.destinationAccountNumber)}.` };
         }
-        if (p.direction === 'in') {
-          return {
-            title: 'Transferencia recibida',
-            body: `Recibiste ${amount} ${currency} desde la cuenta${lastFour(p.sourceAccountNumber)}.`,
-          };
-        }
+      },
+    },
+    {
+      // Comprobante por correo solo para quien envía una transferencia.
+      channel: 'email',
+      when: (p) => p.type === 'transfer' && p.direction === 'out',
+      build: (p) => {
+        const name = escapeHtml(displayNameOf(p));
+        const amount = `${formatAmount(p.amount)} ${currencyOf(p)}`;
+        const destination = maskedAccount(p.destinationAccountNumber).trim() || 'BankLite';
+        const description = typeof p.description === 'string' && p.description.trim()
+          ? escapeHtml(p.description.trim())
+          : 'Transferencia';
+        const reference = typeof p.transactionId === 'string' ? p.transactionId.slice(0, 8).toUpperCase() : '—';
+        const detailRow = (label: string, value: string) =>
+          `<tr><td style="padding:8px 0;color:#65736a;font-size:15px">${label}</td><td style="padding:8px 0;font-size:15px;font-weight:700;text-align:right">${value}</td></tr>`;
         return {
-          title: 'Transferencia realizada',
-          body: `Enviaste ${amount} ${currency} a la cuenta${lastFour(p.destinationAccountNumber)}.`,
+          title: `Transferencia enviada: ${amount} a la cuenta ${destination}`,
+          body: `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">Enviaste ${amount} a la cuenta ${destination}.</div>
+<div style="margin:0;padding:32px 16px;background-color:#f3f6f4;font-family:Arial,sans-serif;color:#17241e">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dce5df;border-radius:8px;overflow:hidden">
+    <div style="padding:32px 36px">
+      <p style="margin:0 0 8px;color:#18794e;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase">BankLite</p>
+      <h1 style="margin:0 0 24px;font-size:26px;line-height:1.3;color:#17241e">Transferencia enviada ✅</h1>
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.6">¡Hola, <strong>${name}</strong>!</p>
+      <p style="margin:0 0 20px;font-size:16px;line-height:1.6">Tu transferencia se realizó con éxito. Estos son los detalles:</p>
+      <p style="margin:0 0 20px;font-size:30px;font-weight:700;color:#17241e">${amount}</p>
+      <table role="presentation" style="width:100%;border-collapse:collapse;border-top:1px solid #e5ebe7;border-bottom:1px solid #e5ebe7">
+        ${detailRow('Cuenta destino', destination)}
+        ${detailRow('Descripción', description)}
+        ${detailRow('Fecha y hora', `${formatBogotaDate(p.createdAt)} (hora de Colombia)`)}
+        ${detailRow('Referencia', reference)}
+      </table>
+      <div style="margin:24px 0 0;padding:16px 20px;border-left:4px solid #c43d32;background:#fbf1f0;font-size:15px;line-height:1.6">
+        <strong>¿No reconoces esta transferencia?</strong> Cambia tu clave de inmediato desde la app con la opción de recuperar clave y comunícate con BankLite. Nunca compartas tu clave ni tus códigos de seguridad.
+      </div>
+      <p style="margin:24px 0 0;font-size:16px;line-height:1.6">El equipo de BankLite</p>
+    </div>
+    <div style="padding:20px 36px;background:#f3f6f4;color:#65736a;font-size:12px;line-height:1.6">
+      <p style="margin:0 0 8px"><em>Este es un mensaje automático enviado por BankLite. Por favor, no respondas a este correo.</em></p>
+      <p style="margin:0"><em>© 2026 BankLite. Todos los derechos reservados.</em></p>
+    </div>
+  </div>
+</div>`,
         };
       },
     },

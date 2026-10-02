@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { InternalKeyGuard } from '../common/guards/internal-key.guard';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { Notification } from './entities/notification.entity';
+import { UserContact } from './entities/user-contact.entity';
 import { MailerService } from './mailer.service';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
@@ -13,7 +14,7 @@ import { NotificationsService } from './notifications.service';
   imports: [
     ConfigModule,
     JwtModule.register({}), // solo para verificar tokens emitidos por Auth Service
-    TypeOrmModule.forFeature([Notification]),
+    TypeOrmModule.forFeature([Notification, UserContact]),
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService, MailerService, JwtAuthGuard, InternalKeyGuard],
