@@ -40,8 +40,14 @@ export class MailerService {
       });
       return true;
     } catch (error) {
-      this.logger.error(`No se pudo enviar correo a ${to}: ${(error as Error).message}`);
+      this.logger.error(`No se pudo enviar correo a ${maskEmail(to)}: ${(error as Error).message}`);
       return false;
     }
   }
+}
+
+/** Para logs: 'laura.gomez@gmail.com' -> 'la***@gmail.com'. */
+function maskEmail(email: string): string {
+  const [user, domain] = email.split('@');
+  return `${user.slice(0, 2)}***@${domain ?? ''}`;
 }
