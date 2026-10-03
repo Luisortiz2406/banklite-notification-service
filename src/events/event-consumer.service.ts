@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
+import { assertRetryQueues, handleFailure, originalRoutingKey, PoisonMessageError } from './retry-policy';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const RECONNECT_DELAY_MS = 5000;
@@ -18,6 +19,10 @@ const RECONNECT_DELAY_MS = 5000;
  * servicio sigue arriba en modo degradado (solo deja de recibir eventos;
  * POST /notifications interno sigue funcionando igual) y reintenta la
  * conexión en segundo plano, también si se cae después de arrancar.
+ *
+ * Si un evento falla al procesarse, se reintenta varias veces con espera y, si
+ * sigue fallando, queda en la DLQ (<cola>.dlq) en lugar de perderse. Los
+ * reintentos no duplican avisos: handleEvent deduplica por occurredAt.
  */
 @Injectable()
 export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
@@ -68,8 +73,9 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
       await channel.assertExchange(exchange, 'topic', { durable: true });
       await channel.assertQueue(queue, { durable: true });
       await channel.bindQueue(queue, exchange, '#');
+      await assertRetryQueues(channel, queue);
 
-      await channel.consume(queue, (msg) => this.handleMessage(channel, msg), { noAck: false });
+      await channel.consume(queue, (msg) => this.handleMessage(channel, queue, msg), { noAck: false });
 
       this.logger.log(`Escuchando TODOS los eventos ('#') en cola '${queue}'.`);
     } catch (err) {
@@ -92,11 +98,16 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Se usa el canal por el que llegó el mensaje: el ack debe ir por ese mismo canal.
-  private async handleMessage(channel: amqplib.Channel, msg: amqplib.ConsumeMessage | null) {
+  private async handleMessage(channel: amqplib.Channel, queue: string, msg: amqplib.ConsumeMessage | null) {
     if (!msg) return;
     try {
-      const content = JSON.parse(msg.content.toString());
-      const event: string | undefined = content?.event ?? msg.fields.routingKey;
+      let content: any;
+      try {
+        content = JSON.parse(msg.content.toString());
+      } catch {
+        throw new PoisonMessageError('El mensaje no es JSON válido.');
+      }
+      const event: string | undefined = content?.event ?? originalRoutingKey(msg);
       const occurredAt: string | undefined = content?.occurredAt;
       const idUser: string | undefined = content?.data?.idUser;
 
@@ -110,12 +121,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Evento '${event}' procesado para idUser=${idUser}`);
       channel.ack(msg);
     } catch (err) {
-      this.logger.error(`Error procesando evento: ${(err as Error).message}`);
-      try {
-        channel.nack(msg, false, false);
-      } catch {
-        // Canal cerrado: RabbitMQ reentregará el mensaje al reconectar.
-      }
+      handleFailure(channel, queue, msg, err as Error, this.logger);
     }
   }
 
