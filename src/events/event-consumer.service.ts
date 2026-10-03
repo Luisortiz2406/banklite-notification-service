@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
-import { assertRetryQueues, handleFailure, originalRoutingKey, PoisonMessageError } from './retry-policy';
+import { assertRetryQueues, handleFailure, peekDeadLetters, queueStats, requeueDeadLetters, originalRoutingKey, PoisonMessageError } from './retry-policy';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const RECONNECT_DELAY_MS = 5000;
@@ -31,6 +31,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
   private channel: amqplib.Channel | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private destroyed = false;
+  private queue: string | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -74,6 +75,7 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
       await channel.assertQueue(queue, { durable: true });
       await channel.bindQueue(queue, exchange, '#');
       await assertRetryQueues(channel, queue);
+      this.queue = queue;
 
       await channel.consume(queue, (msg) => this.handleMessage(channel, queue, msg), { noAck: false });
 
@@ -123,6 +125,22 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
     } catch (err) {
       handleFailure(channel, queue, msg, err as Error, this.logger);
     }
+  }
+
+  /** Panel administrativo: estado de la cola, sus reintentos y su DLQ. */
+  async deadLetterStats() {
+    if (!this.channel || !this.queue) return { connected: false };
+    return { connected: true, ...(await queueStats(this.channel, this.queue)) };
+  }
+
+  async peekDeadLetters(max: number) {
+    if (!this.channel || !this.queue) throw new Error('RabbitMQ no está conectado.');
+    return peekDeadLetters(this.channel, this.queue, max);
+  }
+
+  async requeueDeadLetters(max: number) {
+    if (!this.channel || !this.queue) throw new Error('RabbitMQ no está conectado.');
+    return requeueDeadLetters(this.channel, this.queue, max);
   }
 
   async onModuleDestroy() {
