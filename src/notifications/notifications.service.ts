@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CHANNEL_POLICY, defaultRules } from './channel-policy';
@@ -11,9 +11,17 @@ import { MailerService } from './mailer.service';
 // proyección de usuarios registrados antes de que existiera user_contacts.
 const CONTACT_EVENTS = ['account.created', 'identity.email_confirmed', 'intento_fallido_login'];
 
+// Espera antes de cada reintento de un correo fallido: 1 min, 5 min, 15 min y 1 h.
+// Tras el último, la notificación queda 'failed' (se puede reintentar desde el panel).
+const EMAIL_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
+const RETRY_SCAN_INTERVAL_MS = 30_000;
+const RETRY_BATCH_SIZE = 20;
+
 @Injectable()
-export class NotificationsService {
+export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('NotificationsService');
+  private retryTimer: NodeJS.Timeout | null = null;
+  private retrying = false;
 
   constructor(
     @InjectRepository(Notification) private readonly repo: Repository<Notification>,
@@ -154,8 +162,66 @@ export class NotificationsService {
     const to = this.emailRecipient(payload);
     if (!to) return row;
     const sent = await this.mailer.send(to, row.title, row.body);
-    row.status = sent ? 'sent' : 'failed';
+    row.deliveryAttempts = (row.deliveryAttempts ?? 0) + 1;
+    if (sent) {
+      Object.assign(row, { status: 'sent', nextAttemptAt: null, lastError: null });
+    } else if (row.deliveryAttempts > EMAIL_RETRY_DELAYS_MS.length) {
+      Object.assign(row, { status: 'failed', nextAttemptAt: null, lastError: 'No se pudo enviar el correo tras varios intentos.' });
+      this.logger.error(`Correo de la notificación ${row.id} marcado como fallido tras ${row.deliveryAttempts} intentos.`);
+    } else {
+      const delay = EMAIL_RETRY_DELAYS_MS[row.deliveryAttempts - 1];
+      Object.assign(row, { status: 'pending', nextAttemptAt: new Date(Date.now() + delay), lastError: 'No se pudo enviar el correo.' });
+      this.logger.warn(`Correo de la notificación ${row.id} falló (intento ${row.deliveryAttempts}); se reintenta en ${delay / 60_000} min.`);
+    }
     return this.repo.save(row);
+  }
+
+  onModuleInit() {
+    this.retryTimer = setInterval(() => void this.retryDueEmails(), RETRY_SCAN_INTERVAL_MS);
+  }
+
+  onModuleDestroy() {
+    if (this.retryTimer) clearInterval(this.retryTimer);
+  }
+
+  /**
+   * Reenvía los correos pendientes cuyo reintento ya toca. También recoge los que
+   * quedaron 'pending' sin programar (p. ej. el proceso se reinició a mitad del envío).
+   */
+  async retryDueEmails() {
+    if (this.retrying) return;
+    this.retrying = true;
+    try {
+      const due = await this.repo.manager.transaction(async (manager) => {
+        // SKIP LOCKED + reserva de 5 min: con varias réplicas, cada correo lo envía solo una.
+        const rows = await manager
+          .createQueryBuilder(Notification, 'n')
+          .setLock('pessimistic_write')
+          .setOnLocked('skip_locked')
+          .where(`n.channel = 'email' AND n.status = 'pending'`)
+          .andWhere(`(n.nextAttemptAt <= now() OR (n.nextAttemptAt IS NULL AND n.createdAt < now() - interval '2 minutes'))`)
+          .orderBy('n.createdAt', 'ASC')
+          .limit(RETRY_BATCH_SIZE)
+          .getMany();
+        for (const row of rows) row.nextAttemptAt = new Date(Date.now() + 5 * 60_000);
+        return rows.length ? manager.save(rows) : rows;
+      });
+      for (const row of due) await this.deliverEmail(row, row.metadata ?? {});
+    } catch (error) {
+      this.logger.error(`Error reintentando correos: ${(error as Error).message}`);
+    } finally {
+      this.retrying = false;
+    }
+  }
+
+  /** Panel administrativo: fuerza un nuevo envío de un correo fallido o pendiente. */
+  async retryNow(id: string) {
+    const row = await this.repo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('Notificación no encontrada');
+    if (row.channel !== 'email') throw new BadRequestException('Solo se pueden reintentar notificaciones por correo.');
+    if (row.status === 'sent') throw new BadRequestException('La notificación ya fue enviada.');
+    row.deliveryAttempts = 0;
+    return this.deliverEmail(row, row.metadata ?? {});
   }
 
   private async deliverWhatsapp(row: Notification) {

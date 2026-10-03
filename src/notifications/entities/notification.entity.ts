@@ -62,6 +62,17 @@ export class Notification {
   @Column({ name: 'dedupe_key', type: 'varchar' })
   dedupeKey: string;
 
+  // Reintentos de entrega (email): intentos hechos, cuándo toca el siguiente y el último error.
+  @Column({ name: 'delivery_attempts', type: 'int', default: 0 })
+  deliveryAttempts: number;
+
+  @Index()
+  @Column({ name: 'next_attempt_at', type: 'timestamptz', nullable: true })
+  nextAttemptAt: Date | null;
+
+  @Column({ name: 'last_error', type: 'varchar', length: 500, nullable: true })
+  lastError: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
