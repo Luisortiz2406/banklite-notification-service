@@ -54,6 +54,59 @@ function formatBogotaDate(value: unknown): string {
   }).format(valid);
 }
 
+function formatBillingDate(value: unknown): string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '—';
+  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${value}T12:00:00Z`));
+}
+
+function subscriptionName(p: Record<string, any>): string {
+  const name = typeof p.merchantName === 'string' && p.merchantName.trim() ? p.merchantName.trim() : 'tu suscripción';
+  return name.replace(/[\r\n]+/g, ' ');
+}
+
+function reasonText(p: Record<string, any>): string {
+  return (typeof p.reason === 'string' && p.reason.trim() ? p.reason.trim() : 'cobro rechazado').replace(/\.+$/, '');
+}
+
+function cardText(p: Record<string, any>): string {
+  return typeof p.cardLast4 === 'string' && /^\d{4}$/.test(p.cardLast4) ? `tu tarjeta ····${p.cardLast4}` : 'tu tarjeta';
+}
+
+/** Correo de suscripciones con la misma estética de los demás correos de BankLite. */
+function subscriptionEmail(
+  p: Record<string, any>,
+  heading: string,
+  intro: string,
+  rows: [string, string][],
+  alert?: { tone: 'warning' | 'danger'; html: string },
+): string {
+  const name = escapeHtml(displayNameOf(p));
+  const detailRow = ([label, value]: [string, string]) =>
+    `<tr><td style="padding:8px 0;color:#65736a;font-size:15px">${label}</td><td style="padding:8px 0;font-size:15px;font-weight:700;text-align:right">${escapeHtml(value)}</td></tr>`;
+  const alertBox = alert
+    ? `<div style="margin:24px 0 0;padding:16px 20px;border-left:4px solid ${alert.tone === 'danger' ? '#c43d32' : '#e07b00'};background:${alert.tone === 'danger' ? '#fbf1f0' : '#fff4e5'};font-size:15px;line-height:1.6">${alert.html}</div>`
+    : '';
+  return `<div style="margin:0;padding:32px 16px;background-color:#f3f6f4;font-family:Arial,sans-serif;color:#17241e">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dce5df;border-radius:8px;overflow:hidden">
+    <div style="padding:32px 36px">
+      <p style="margin:0 0 8px;color:#18794e;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase">BankLite</p>
+      <h1 style="margin:0 0 24px;font-size:26px;line-height:1.3;color:#17241e">${escapeHtml(heading)}</h1>
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.6">¡Hola, <strong>${name}</strong>!</p>
+      <p style="margin:0 0 20px;font-size:16px;line-height:1.6">${escapeHtml(intro)}</p>
+      <table role="presentation" style="width:100%;border-collapse:collapse;border-top:1px solid #e5ebe7;border-bottom:1px solid #e5ebe7">
+        ${rows.map(detailRow).join('\n        ')}
+      </table>
+      ${alertBox}
+      <p style="margin:24px 0 0;font-size:16px;line-height:1.6">El equipo de BankLite</p>
+    </div>
+    <div style="padding:20px 36px;background:#f3f6f4;color:#65736a;font-size:12px;line-height:1.6">
+      <p style="margin:0 0 8px"><em>Este es un mensaje automático enviado por BankLite. Por favor, no respondas a este correo.</em></p>
+      <p style="margin:0"><em>© 2026 BankLite. Todos los derechos reservados.</em></p>
+    </div>
+  </div>
+</div>`;
+}
+
 /**
  * Mapa evento -> reglas por canal. Este archivo es la "tabla" del diseño que
  * hablamos: un mismo evento puede generar 0, 1 o varias filas (una por canal),
@@ -150,6 +203,8 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
   'transaction.completed': [
     {
       channel: 'in_app',
+      // Los cobros de suscripciones se notifican con subscription.charged (más detalle).
+      when: (p) => p.type !== 'payment',
       build: (p) => {
         const amount = `${formatAmount(p.amount)} ${currencyOf(p)}`;
         const incoming = p.direction === 'in';
@@ -215,6 +270,114 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
 </div>`,
         };
       },
+    },
+  ],
+
+  // ---- Suscripciones (card-service) ----
+
+  // 3 días antes del cobro.
+  'subscription.charge_upcoming': [
+    {
+      channel: 'in_app',
+      build: (p) => ({
+        title: `Próximo cobro de ${subscriptionName(p)}`,
+        body: `El ${formatBillingDate(p.chargeDate)} cobraremos ${formatAmount(p.amount)} ${currencyOf(p)} a ${cardText(p)}.`,
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: `Próximo cobro de ${subscriptionName(p)}: ${formatAmount(p.amount)} ${currencyOf(p)}`,
+        body: subscriptionEmail(p, `Tu cobro de ${subscriptionName(p)} se acerca 📅`,
+          'En 3 días cobraremos tu suscripción. Ten saldo disponible en tu cuenta para que el pago salga sin problema.',
+          [
+            ['Servicio', `${subscriptionName(p)}${p.plan ? ` · ${p.plan}` : ''}`],
+            ['Valor', `${formatAmount(p.amount)} ${currencyOf(p)}`],
+            ['Fecha de cobro', formatBillingDate(p.chargeDate)],
+            ['Medio de pago', cardText(p)],
+          ],
+          { tone: 'warning', html: 'Si ya no quieres este servicio, puedes <strong>pausar o cancelar</strong> la suscripción desde la app antes de la fecha de cobro.' }),
+      }),
+    },
+  ],
+
+  'subscription.charged': [
+    {
+      channel: 'in_app',
+      build: (p) => ({
+        title: `Pago de ${subscriptionName(p)} realizado`,
+        body: `Cobramos ${formatAmount(p.amount)} ${currencyOf(p)} a ${cardText(p)}.${p.nextChargeDate ? ` Próximo cobro: ${formatBillingDate(p.nextChargeDate)}.` : ''}`,
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: `Pago de ${subscriptionName(p)}: ${formatAmount(p.amount)} ${currencyOf(p)}`,
+        body: subscriptionEmail(p, `Pago de ${subscriptionName(p)} realizado ✅`,
+          'Tu suscripción se cobró correctamente. Estos son los detalles:',
+          [
+            ['Servicio', `${subscriptionName(p)}${p.plan ? ` · ${p.plan}` : ''}`],
+            ['Valor', `${formatAmount(p.amount)} ${currencyOf(p)}`],
+            ['Periodo', typeof p.period === 'string' ? p.period : '—'],
+            ['Medio de pago', cardText(p)],
+            ['Próximo cobro', formatBillingDate(p.nextChargeDate)],
+            ['Referencia', typeof p.transactionId === 'string' ? p.transactionId.slice(0, 8).toUpperCase() : '—'],
+          ]),
+      }),
+    },
+  ],
+
+  'subscription.charge_rejected': [
+    {
+      channel: 'in_app',
+      build: (p) => ({
+        title: `No pudimos cobrar ${subscriptionName(p)}`,
+        body: p.final
+          ? `Motivo: ${reasonText(p)}. Era el último intento.`
+          : `Motivo: ${reasonText(p)}. Lo intentaremos de nuevo el ${formatBillingDate(p.nextAttemptDate)}.`,
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: `No pudimos cobrar ${subscriptionName(p)}`,
+        body: subscriptionEmail(p, `No pudimos cobrar ${subscriptionName(p)} ⚠️`,
+          'Intentamos cobrar tu suscripción, pero el pago fue rechazado.',
+          [
+            ['Servicio', subscriptionName(p)],
+            ['Valor', `${formatAmount(p.amount)} ${currencyOf(p)}`],
+            ['Motivo', typeof p.reason === 'string' ? p.reason : 'Cobro rechazado'],
+            ['Intento', String(p.attempt ?? 1)],
+            ['Próximo intento', p.final ? 'No habrá más intentos' : formatBillingDate(p.nextAttemptDate)],
+          ],
+          { tone: p.final ? 'danger' : 'warning', html: p.final
+            ? 'Este era el último intento: la suscripción quedará <strong>suspendida</strong>.'
+            : 'Revisa que tu tarjeta esté activa y que tengas saldo disponible antes del próximo intento.' }),
+      }),
+    },
+  ],
+
+  'subscription.suspended': [
+    {
+      channel: 'in_app',
+      build: (p) => ({
+        title: `${subscriptionName(p)} quedó suspendida`,
+        body: 'No pudimos cobrarla después de 3 reintentos. Puedes reactivarla desde Mis suscripciones.',
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: `${subscriptionName(p)} quedó suspendida`,
+        body: subscriptionEmail(p, `Tu suscripción a ${subscriptionName(p)} está suspendida`,
+          'No pudimos cobrar tu suscripción después de 3 reintentos, así que la suspendimos y no haremos más cobros.',
+          [
+            ['Servicio', subscriptionName(p)],
+            ['Valor mensual', `${formatAmount(p.amount)} ${currencyOf(p)}`],
+            ['Último motivo', typeof p.reason === 'string' ? p.reason : 'Cobro rechazado'],
+          ],
+          { tone: 'danger', html: 'Para reactivarla, entra a <strong>Mis suscripciones</strong> en la app y toca <strong>Reactivar</strong>: cobraremos el mes en ese momento.' }),
+      }),
     },
   ],
 
