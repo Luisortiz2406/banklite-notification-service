@@ -1,43 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import { GmailApiClient, readGmailCredentials } from './gmail-api.client';
 
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger('MailerService[notification-service]');
-  private transporter: nodemailer.Transporter | null = null;
+  private gmail: GmailApiClient | null = null;
 
   constructor(private readonly config: ConfigService) {}
 
-  private getTransporter(): nodemailer.Transporter | null {
-    if (this.transporter) return this.transporter;
-    const user = this.config.get<string>('GMAIL_SMTP_USER');
-    const pass = this.config.get<string>('GMAIL_SMTP_APP_PASSWORD');
-    if (!user || !pass) return null;
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      // Gmail muestra la App Password con espacios; se quitan igual que en auth-service.
-      auth: { user, pass: pass.replace(/\s+/g, '') },
-    });
-    return this.transporter;
+  private getGmail(): GmailApiClient | null {
+    if (this.gmail) return this.gmail;
+    const creds = readGmailCredentials((key) => this.config.get<string>(key));
+    if (!creds) return null;
+    this.gmail = new GmailApiClient(creds, 'GmailApiClient[notification-service]');
+    return this.gmail;
   }
 
   /** Devuelve true si logró enviar, false si falló (nunca lanza). */
   async send(to: string, subject: string, html: string): Promise<boolean> {
-    const transporter = this.getTransporter();
-    if (!transporter) {
+    const gmail = this.getGmail();
+    if (!gmail) {
       this.logger.warn(
-        `GMAIL_SMTP_USER/APP_PASSWORD no configurados. [degradado] correo a ${to}: ${subject}`,
+        `GMAIL_CLIENT_ID/CLIENT_SECRET/REFRESH_TOKEN/SENDER no configurados. [degradado] correo a ${maskEmail(to)}: ${subject}`,
       );
       return false;
     }
     try {
-      await transporter.sendMail({
-        from: this.config.get<string>('GMAIL_SMTP_USER'),
-        to,
-        subject,
-        html,
-      });
+      await gmail.send({ to, subject, html });
       return true;
     } catch (error) {
       this.logger.error(`No se pudo enviar correo a ${maskEmail(to)}: ${(error as Error).message}`);
