@@ -2,18 +2,18 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
 import { assertRetryQueues, handleFailure, peekDeadLetters, queueStats, requeueDeadLetters, originalRoutingKey, PoisonMessageError } from './retry-policy';
+import { CHANNEL_POLICY } from '../notifications/channel-policy';
 import { NotificationsService } from '../notifications/notifications.service';
 
 const RECONNECT_DELAY_MS = 5000;
+const SUBSCRIBED_EVENTS = Object.keys(CHANNEL_POLICY).filter((event) => CHANNEL_POLICY[event].length > 0);
 
 /**
- * A diferencia de account-service (que solo escucha 'identity.verified'),
- * este consumer se suscribe con routing key '#' a TODO lo que se publique
- * en el exchange 'banklite.events'. Así, cuando agregues un microservicio
- * nuevo (Ledger, Card, etc.) que publique sus propios eventos, notification
- * -service los recibe automáticamente sin cambios de código aquí — solo hay
- * que mapear el evento en channel-policy.ts (si no está mapeado, cae en la
- * regla por defecto: in-app genérico).
+ * Se suscribe SOLO a los eventos que generan algún aviso: los mapeados con al
+ * menos un canal en channel-policy.ts (mínimo privilegio: antes escuchaba '#',
+ * todo el bus, y guardaba payloads que no necesitaba). Para notificar un
+ * evento nuevo basta con mapearlo en channel-policy.ts; el binding se crea
+ * solo al arrancar.
  *
  * Igual que en el resto del proyecto: si RabbitMQ no está disponible, el
  * servicio sigue arriba en modo degradado (solo deja de recibir eventos;
@@ -73,13 +73,15 @@ export class EventConsumerService implements OnModuleInit, OnModuleDestroy {
 
       await channel.assertExchange(exchange, 'topic', { durable: true });
       await channel.assertQueue(queue, { durable: true });
-      await channel.bindQueue(queue, exchange, '#');
+      // Versiones anteriores enlazaban '#'; el binding persiste en la cola durable.
+      await channel.unbindQueue(queue, exchange, '#');
+      for (const routingKey of SUBSCRIBED_EVENTS) await channel.bindQueue(queue, exchange, routingKey);
       await assertRetryQueues(channel, queue);
       this.queue = queue;
 
       await channel.consume(queue, (msg) => this.handleMessage(channel, queue, msg), { noAck: false });
 
-      this.logger.log(`Escuchando TODOS los eventos ('#') en cola '${queue}'.`);
+      this.logger.log(`Escuchando ${SUBSCRIBED_EVENTS.join(', ')} en cola '${queue}'.`);
     } catch (err) {
       this.logger.warn(
         `No se pudo conectar a RabbitMQ (${(err as Error).message}). Reintentando en ${RECONNECT_DELAY_MS / 1000}s.`,

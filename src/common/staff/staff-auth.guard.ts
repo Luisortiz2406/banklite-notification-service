@@ -47,7 +47,7 @@ export class StaffAuthGuard implements CanActivate {
 
     let payload: { sub?: string; type?: string; role?: StaffRole; username?: string };
     try {
-      payload = this.jwt.verify(header.slice('Bearer '.length), { secret });
+      payload = this.jwt.verify(header.slice('Bearer '.length), { secret, algorithms: ['HS256'] });
     } catch {
       throw new UnauthorizedException('Sesión de empleado inválida o expirada');
     }

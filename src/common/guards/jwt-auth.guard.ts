@@ -33,6 +33,7 @@ export class JwtAuthGuard implements CanActivate {
     try {
       const payload = this.jwt.verify(token, {
         secret: this.config.get('JWT_SECRET'),
+        algorithms: ['HS256'],
       });
       if (payload.type !== 'access') {
         throw new UnauthorizedException('Token no es de tipo access');
