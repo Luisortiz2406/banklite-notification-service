@@ -399,6 +399,45 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
     },
   ],
 
+  // Publicado por Fraud Service cuando una transacción supera el umbral de
+  // revisión. Nunca acusa al cliente de nada: solo informa que se está
+  // revisando. La decisión (confirmar/descartar) la toma soporte/cumplimiento
+  // desde el panel admin, nunca de forma automática.
+  'fraud.alert': [
+    {
+      channel: 'in_app',
+      build: () => ({
+        title: 'Estamos revisando un movimiento de tu cuenta',
+        body: 'Detectamos actividad inusual en una transacción reciente y nuestro equipo la está revisando. No necesitas hacer nada por ahora.',
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => {
+        const name = escapeHtml(displayNameOf(p));
+        return {
+          title: 'BankLite — Estamos revisando un movimiento de tu cuenta',
+          body: `<div style="margin:0;padding:32px 16px;background-color:#f3f6f4;font-family:Arial,sans-serif;color:#17241e">
+  <div style="max-width:600px;margin:0 auto;background:#ffffff;border:1px solid #dce5df;border-radius:8px;overflow:hidden">
+    <div style="padding:32px 36px">
+      <p style="margin:0 0 8px;color:#18794e;font-size:14px;font-weight:700;letter-spacing:1px;text-transform:uppercase">BankLite</p>
+      <h1 style="margin:0 0 24px;font-size:26px;line-height:1.3;color:#17241e">Estamos revisando un movimiento tuyo 🔎</h1>
+      <p style="margin:0 0 16px;font-size:16px;line-height:1.6">¡Hola, <strong>${name}</strong>!</p>
+      <p style="margin:0 0 20px;font-size:16px;line-height:1.6">Como parte de nuestros controles de seguridad, detectamos actividad inusual en una transacción reciente de tu cuenta y nuestro equipo la está revisando. Es una medida preventiva: no implica que hayas hecho algo indebido.</p>
+      <p style="margin:0 0 20px;font-size:16px;line-height:1.6">No necesitas hacer nada por ahora. Si identificamos algo que requiera tu atención, te lo haremos saber.</p>
+      <p style="margin:24px 0 0;font-size:16px;line-height:1.6">El equipo de BankLite</p>
+    </div>
+    <div style="padding:20px 36px;background:#f3f6f4;color:#65736a;font-size:12px;line-height:1.6">
+      <p style="margin:0 0 8px"><em>Este es un mensaje automático enviado por BankLite. Por favor, no respondas a este correo.</em></p>
+      <p style="margin:0"><em>© 2026 BankLite. Todos los derechos reservados.</em></p>
+    </div>
+  </div>
+</div>`,
+        };
+      },
+    },
+  ],
+
   // Login exitoso: demasiado frecuente para notificar por defecto. Se deja
   // documentado y desactivado (array vacío) en vez de omitir la clave, para
   // que quede explícito que fue una decisión y no un olvido.
