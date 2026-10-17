@@ -72,6 +72,10 @@ function cardText(p: Record<string, any>): string {
   return typeof p.cardLast4 === 'string' && /^\d{4}$/.test(p.cardLast4) ? `tu tarjeta ····${p.cardLast4}` : 'tu tarjeta';
 }
 
+function cardOnlineTitle(p: Record<string, any>): string {
+  return p.onlineEnabled ? 'Activaste las compras por internet' : 'Desactivaste las compras por internet';
+}
+
 /** Correo de suscripciones con la misma estética de los demás correos de BankLite. */
 function subscriptionEmail(
   p: Record<string, any>,
@@ -377,6 +381,64 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
             ['Último motivo', typeof p.reason === 'string' ? p.reason : 'Cobro rechazado'],
           ],
           { tone: 'danger', html: 'Para reactivarla, entra a <strong>Mis suscripciones</strong> en la app y toca <strong>Reactivar</strong>: cobraremos el mes en ese momento.' }),
+      }),
+    },
+  ],
+
+  // ---- Controles de la tarjeta (card-service) ----
+
+  // Cambio de compras por internet o del límite diario: aviso de seguridad.
+  'card.controls_changed': [
+    {
+      channel: 'in_app',
+      build: (p) => ({
+        title: p.field === 'daily_limit' ? 'Cambiaste el límite diario de tu tarjeta' : cardOnlineTitle(p),
+        body: p.field === 'daily_limit'
+          ? `El nuevo límite de compras de ${cardText(p)} es ${formatAmount(p.dailyLimit)} ${currencyOf(p)} al día.`
+          : `${p.onlineEnabled ? 'Ya puedes' : 'Ya no puedes'} usar ${cardText(p)} en tiendas online, apps y suscripciones.`,
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: p.field === 'daily_limit' ? 'Cambiaste el límite diario de tu tarjeta' : cardOnlineTitle(p),
+        body: subscriptionEmail(p, p.field === 'daily_limit' ? 'Nuevo límite diario de compras 🔒' : `${cardOnlineTitle(p)} 🔒`,
+          'Se hizo este cambio en los controles de tu tarjeta:',
+          [
+            ['Tarjeta', cardText(p)],
+            p.field === 'daily_limit'
+              ? ['Límite diario', `${formatAmount(p.dailyLimit)} ${currencyOf(p)}`]
+              : ['Compras por internet', p.onlineEnabled ? 'Activadas' : 'Desactivadas'],
+            ['Fecha', formatBogotaDate(undefined)],
+          ],
+          { tone: 'warning', html: 'Si no hiciste este cambio, <strong>congela tu tarjeta</strong> desde la app y cambia tu contraseña.' }),
+      }),
+    },
+  ],
+
+  // Compra con la tarjeta rechazada (los cobros de suscripciones avisan con subscription.charge_rejected).
+  'card.charge_declined': [
+    {
+      channel: 'in_app',
+      build: (p) => ({
+        title: 'Compra rechazada',
+        body: `${subscriptionName(p)} · ${formatAmount(p.amount)} ${currencyOf(p)}. Motivo: ${reasonText(p)}.`,
+      }),
+    },
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: `Compra rechazada en ${subscriptionName(p)}`,
+        body: subscriptionEmail(p, 'Rechazamos una compra con tu tarjeta ⚠️',
+          'Intentaron hacer una compra con tu tarjeta y no la aprobamos.',
+          [
+            ['Comercio', subscriptionName(p)],
+            ['Canal', p.channel === 'online' ? 'Por internet' : 'Tienda física'],
+            ['Valor', `${formatAmount(p.amount)} ${currencyOf(p)}`],
+            ['Tarjeta', cardText(p)],
+            ['Motivo', typeof p.reason === 'string' ? p.reason : 'Compra rechazada'],
+          ],
+          { tone: 'warning', html: 'Si no reconoces esta compra, <strong>congela tu tarjeta</strong> desde la app.' }),
       }),
     },
   ],
