@@ -13,6 +13,10 @@ export class AdminAudit {
   @Column({ name: 'staff_username', type: 'varchar' })
   staffUsername: string;
 
+  // Rol del empleado al momento de la acción (null en registros anteriores a los roles).
+  @Column({ name: 'staff_role', type: 'varchar', nullable: true })
+  staffRole: string | null;
+
   @Column({ type: 'varchar' })
   action: string;
 

@@ -78,6 +78,7 @@ export class AdminNotificationsController {
   }
 
   @Post('notifications/:id/retry')
+  @StaffRoles('support', 'admin')
   @HttpCode(200)
   async retry(@Param('id') id: string, @Req() req: any) {
     const row = await this.notifications.retryNow(id);

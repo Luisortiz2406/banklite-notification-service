@@ -25,6 +25,7 @@ export class AdminAuditService {
       repo.create({
         staffId: staff.id,
         staffUsername: staff.username,
+        staffRole: staff.role,
         action: entry.action,
         targetType: entry.targetType,
         targetId: entry.targetId,
