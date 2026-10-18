@@ -21,6 +21,8 @@ export interface StaffPrincipal {
   role: StaffRole;
   /** HMAC del documento del empleado (ver auth-service); null si no lo tiene registrado. */
   docHash: string | null;
+  /** Cuándo se emitió el token (segundos, claim iat): auth-service lo compara al cerrar sesiones. */
+  issuedAt: number | null;
 }
 
 const ROLES_KEY = 'staffRoles';
@@ -53,7 +55,7 @@ export class StaffAuthGuard implements CanActivate {
     const secret = this.config.get<string>('STAFF_JWT_SECRET');
     if (!secret) throw new UnauthorizedException('El panel administrativo no está configurado (STAFF_JWT_SECRET).');
 
-    let payload: { sub?: string; type?: string; role?: string; username?: string; docHash?: string };
+    let payload: { sub?: string; type?: string; role?: string; username?: string; docHash?: string; iat?: number };
     try {
       payload = this.jwt.verify(header.slice('Bearer '.length), { secret, algorithms: ['HS256'] });
     } catch {
@@ -77,6 +79,7 @@ export class StaffAuthGuard implements CanActivate {
       username: payload.username ?? payload.sub,
       role,
       docHash: payload.docHash ?? null,
+      issuedAt: typeof payload.iat === 'number' ? payload.iat : null,
     } satisfies StaffPrincipal;
     return true;
   }
