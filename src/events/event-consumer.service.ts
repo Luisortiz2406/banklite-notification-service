@@ -1,7 +1,15 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqplib from 'amqplib';
-import { assertRetryQueues, handleFailure, peekDeadLetters, queueStats, requeueDeadLetters, originalRoutingKey, PoisonMessageError } from './retry-policy';
+import {
+  assertRetryQueues,
+  handleFailure,
+  peekDeadLetters,
+  queueStats,
+  requeueDeadLetters,
+  originalRoutingKey,
+  PoisonMessageError,
+} from './retry-policy';
 import { CHANNEL_POLICY } from '../notifications/channel-policy';
 import { NotificationsService } from '../notifications/notifications.service';
 

@@ -1,4 +1,12 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { CHANNEL_POLICY, defaultRules } from './channel-policy';
@@ -133,8 +141,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async rememberContact(idUser: string, email: string | null, nombreCompleto: string | null) {
-    const row = (await this.contacts.findOne({ where: { idUser } }))
-      ?? this.contacts.create({ idUser, email: null, nombreCompleto: null });
+    const row =
+      (await this.contacts.findOne({ where: { idUser } })) ??
+      this.contacts.create({ idUser, email: null, nombreCompleto: null });
     const nextEmail = email ? email.toLowerCase() : row.email;
     const nextName = nombreCompleto ?? row.nombreCompleto;
     if (row.email === nextEmail && row.nombreCompleto === nextName && row.updatedAt) return row;
@@ -166,12 +175,24 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     if (sent) {
       Object.assign(row, { status: 'sent', nextAttemptAt: null, lastError: null });
     } else if (row.deliveryAttempts > EMAIL_RETRY_DELAYS_MS.length) {
-      Object.assign(row, { status: 'failed', nextAttemptAt: null, lastError: 'No se pudo enviar el correo tras varios intentos.' });
-      this.logger.error(`Correo de la notificación ${row.id} marcado como fallido tras ${row.deliveryAttempts} intentos.`);
+      Object.assign(row, {
+        status: 'failed',
+        nextAttemptAt: null,
+        lastError: 'No se pudo enviar el correo tras varios intentos.',
+      });
+      this.logger.error(
+        `Correo de la notificación ${row.id} marcado como fallido tras ${row.deliveryAttempts} intentos.`,
+      );
     } else {
       const delay = EMAIL_RETRY_DELAYS_MS[row.deliveryAttempts - 1];
-      Object.assign(row, { status: 'pending', nextAttemptAt: new Date(Date.now() + delay), lastError: 'No se pudo enviar el correo.' });
-      this.logger.warn(`Correo de la notificación ${row.id} falló (intento ${row.deliveryAttempts}); se reintenta en ${delay / 60_000} min.`);
+      Object.assign(row, {
+        status: 'pending',
+        nextAttemptAt: new Date(Date.now() + delay),
+        lastError: 'No se pudo enviar el correo.',
+      });
+      this.logger.warn(
+        `Correo de la notificación ${row.id} falló (intento ${row.deliveryAttempts}); se reintenta en ${delay / 60_000} min.`,
+      );
     }
     return this.repo.save(row);
   }
@@ -199,7 +220,9 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
           .setLock('pessimistic_write')
           .setOnLocked('skip_locked')
           .where(`n.channel = 'email' AND n.status = 'pending'`)
-          .andWhere(`(n.nextAttemptAt <= now() OR (n.nextAttemptAt IS NULL AND n.createdAt < now() - interval '2 minutes'))`)
+          .andWhere(
+            `(n.nextAttemptAt <= now() OR (n.nextAttemptAt IS NULL AND n.createdAt < now() - interval '2 minutes'))`,
+          )
           .orderBy('n.createdAt', 'ASC')
           .limit(RETRY_BATCH_SIZE)
           .getMany();
@@ -233,12 +256,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** GET /notifications/:idUser */
-  async findForUser(
-    idUser: string,
-    requesterId: string,
-    channel?: string,
-    unreadOnly?: boolean,
-  ) {
+  async findForUser(idUser: string, requesterId: string, channel?: string, unreadOnly?: boolean) {
     if (requesterId !== idUser) {
       throw new ForbiddenException('No puedes consultar las notificaciones de otro usuario');
     }

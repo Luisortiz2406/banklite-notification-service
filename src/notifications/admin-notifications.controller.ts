@@ -1,4 +1,14 @@
-import { Controller, Get, HttpCode, Param, Post, Query, Req, ServiceUnavailableException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Req,
+  ServiceUnavailableException,
+  UseGuards,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
@@ -71,7 +81,12 @@ export class AdminNotificationsController {
   @HttpCode(200)
   async retry(@Param('id') id: string, @Req() req: any) {
     const row = await this.notifications.retryNow(id);
-    await this.audit.record(req.staff, { action: 'notification.retry', targetType: 'notification', targetId: id, details: { status: row.status } });
+    await this.audit.record(req.staff, {
+      action: 'notification.retry',
+      targetType: 'notification',
+      targetId: id,
+      details: { status: row.status },
+    });
     const { body: _b, metadata: _m, dedupeKey: _d, ...rest } = row;
     return rest;
   }
@@ -96,7 +111,12 @@ export class AdminNotificationsController {
   async requeue(@Req() req: any) {
     try {
       const result = await this.consumer.requeueDeadLetters(100);
-      await this.audit.record(req.staff, { action: 'dlq.requeue', targetType: 'queue', targetId: 'notification-service', details: result });
+      await this.audit.record(req.staff, {
+        action: 'dlq.requeue',
+        targetType: 'queue',
+        targetId: 'notification-service',
+        details: result,
+      });
       return result;
     } catch (e) {
       throw new ServiceUnavailableException((e as Error).message);

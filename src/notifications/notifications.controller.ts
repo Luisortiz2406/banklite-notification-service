@@ -46,12 +46,7 @@ export class NotificationsController {
     @Query('channel') channel: string = 'in_app',
     @Query('unread') unread?: string,
   ) {
-    return this.notifications.findForUser(
-      idUser,
-      this.requesterId(request),
-      channel,
-      unread === 'true',
-    );
+    return this.notifications.findForUser(idUser, this.requesterId(request), channel, unread === 'true');
   }
 
   @Put(':id/read')

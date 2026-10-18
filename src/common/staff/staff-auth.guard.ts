@@ -63,7 +63,11 @@ export class StaffAuthGuard implements CanActivate {
       throw new ForbiddenException('Tu rol no permite esta acción.');
     }
 
-    (request as any).staff = { id: payload.sub, username: payload.username ?? payload.sub, role: payload.role } satisfies StaffPrincipal;
+    (request as any).staff = {
+      id: payload.sub,
+      username: payload.username ?? payload.sub,
+      role: payload.role,
+    } satisfies StaffPrincipal;
     return true;
   }
 }

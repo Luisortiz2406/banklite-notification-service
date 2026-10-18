@@ -15,13 +15,17 @@ export interface ChannelRule {
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[character] as string);
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] as string,
+  );
 }
 
 function displayNameOf(p: Record<string, any>): string {
@@ -56,7 +60,9 @@ function formatBogotaDate(value: unknown): string {
 
 function formatBillingDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '—';
-  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${value}T12:00:00Z`));
+  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'long', timeZone: 'UTC' }).format(
+    new Date(`${value}T12:00:00Z`),
+  );
 }
 
 function subscriptionName(p: Record<string, any>): string {
@@ -69,7 +75,9 @@ function reasonText(p: Record<string, any>): string {
 }
 
 function cardText(p: Record<string, any>): string {
-  return typeof p.cardLast4 === 'string' && /^\d{4}$/.test(p.cardLast4) ? `tu tarjeta ····${p.cardLast4}` : 'tu tarjeta';
+  return typeof p.cardLast4 === 'string' && /^\d{4}$/.test(p.cardLast4)
+    ? `tu tarjeta ····${p.cardLast4}`
+    : 'tu tarjeta';
 }
 
 function cardOnlineTitle(p: Record<string, any>): string {
@@ -127,9 +135,10 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
     {
       channel: 'email',
       build: (p) => {
-        const displayName = typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
-          ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
-          : 'Cliente';
+        const displayName =
+          typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
+            ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
+            : 'Cliente';
         const name = escapeHtml(displayName);
         return {
           title: `¡Todo listo, ${displayName}! Te damos la bienvenida a Banklite 📱`,
@@ -179,9 +188,10 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
     {
       channel: 'email',
       build: (p) => {
-        const displayName = typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
-          ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
-          : 'Cliente';
+        const displayName =
+          typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
+            ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
+            : 'Cliente';
         const name = escapeHtml(displayName);
         return {
           title: '¡Identidad verificada con éxito! 🎉 Tu cuenta BankLite te espera',
@@ -225,8 +235,14 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
               : { title: 'Reverso aplicado', body: `Se reversaron ${amount} de tu cuenta.` };
           default:
             return incoming
-              ? { title: 'Transferencia recibida', body: `Recibiste ${amount} desde la cuenta${maskedAccount(p.sourceAccountNumber)}.` }
-              : { title: 'Transferencia realizada', body: `Enviaste ${amount} a la cuenta${maskedAccount(p.destinationAccountNumber)}.` };
+              ? {
+                  title: 'Transferencia recibida',
+                  body: `Recibiste ${amount} desde la cuenta${maskedAccount(p.sourceAccountNumber)}.`,
+                }
+              : {
+                  title: 'Transferencia realizada',
+                  body: `Enviaste ${amount} a la cuenta${maskedAccount(p.destinationAccountNumber)}.`,
+                };
         }
       },
     },
@@ -238,9 +254,10 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
         const name = escapeHtml(displayNameOf(p));
         const amount = `${formatAmount(p.amount)} ${currencyOf(p)}`;
         const destination = maskedAccount(p.destinationAccountNumber).trim() || 'BankLite';
-        const description = typeof p.description === 'string' && p.description.trim()
-          ? escapeHtml(p.description.trim())
-          : 'Transferencia';
+        const description =
+          typeof p.description === 'string' && p.description.trim()
+            ? escapeHtml(p.description.trim())
+            : 'Transferencia';
         const reference = typeof p.transactionId === 'string' ? p.transactionId.slice(0, 8).toUpperCase() : '—';
         const detailRow = (label: string, value: string) =>
           `<tr><td style="padding:8px 0;color:#65736a;font-size:15px">${label}</td><td style="padding:8px 0;font-size:15px;font-weight:700;text-align:right">${value}</td></tr>`;
@@ -292,7 +309,9 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'email',
       build: (p) => ({
         title: `Próximo cobro de ${subscriptionName(p)}: ${formatAmount(p.amount)} ${currencyOf(p)}`,
-        body: subscriptionEmail(p, `Tu cobro de ${subscriptionName(p)} se acerca 📅`,
+        body: subscriptionEmail(
+          p,
+          `Tu cobro de ${subscriptionName(p)} se acerca 📅`,
           'En 3 días cobraremos tu suscripción. Ten saldo disponible en tu cuenta para que el pago salga sin problema.',
           [
             ['Servicio', `${subscriptionName(p)}${p.plan ? ` · ${p.plan}` : ''}`],
@@ -300,7 +319,11 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
             ['Fecha de cobro', formatBillingDate(p.chargeDate)],
             ['Medio de pago', cardText(p)],
           ],
-          { tone: 'warning', html: 'Si ya no quieres este servicio, puedes <strong>pausar o cancelar</strong> la suscripción desde la app antes de la fecha de cobro.' }),
+          {
+            tone: 'warning',
+            html: 'Si ya no quieres este servicio, puedes <strong>pausar o cancelar</strong> la suscripción desde la app antes de la fecha de cobro.',
+          },
+        ),
       }),
     },
   ],
@@ -317,7 +340,9 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'email',
       build: (p) => ({
         title: `Pago de ${subscriptionName(p)}: ${formatAmount(p.amount)} ${currencyOf(p)}`,
-        body: subscriptionEmail(p, `Pago de ${subscriptionName(p)} realizado ✅`,
+        body: subscriptionEmail(
+          p,
+          `Pago de ${subscriptionName(p)} realizado ✅`,
           'Tu suscripción se cobró correctamente. Estos son los detalles:',
           [
             ['Servicio', `${subscriptionName(p)}${p.plan ? ` · ${p.plan}` : ''}`],
@@ -326,7 +351,8 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
             ['Medio de pago', cardText(p)],
             ['Próximo cobro', formatBillingDate(p.nextChargeDate)],
             ['Referencia', typeof p.transactionId === 'string' ? p.transactionId.slice(0, 8).toUpperCase() : '—'],
-          ]),
+          ],
+        ),
       }),
     },
   ],
@@ -345,7 +371,9 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'email',
       build: (p) => ({
         title: `No pudimos cobrar ${subscriptionName(p)}`,
-        body: subscriptionEmail(p, `No pudimos cobrar ${subscriptionName(p)} ⚠️`,
+        body: subscriptionEmail(
+          p,
+          `No pudimos cobrar ${subscriptionName(p)} ⚠️`,
           'Intentamos cobrar tu suscripción, pero el pago fue rechazado.',
           [
             ['Servicio', subscriptionName(p)],
@@ -354,9 +382,13 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
             ['Intento', String(p.attempt ?? 1)],
             ['Próximo intento', p.final ? 'No habrá más intentos' : formatBillingDate(p.nextAttemptDate)],
           ],
-          { tone: p.final ? 'danger' : 'warning', html: p.final
-            ? 'Este era el último intento: la suscripción quedará <strong>suspendida</strong>.'
-            : 'Revisa que tu tarjeta esté activa y que tengas saldo disponible antes del próximo intento.' }),
+          {
+            tone: p.final ? 'danger' : 'warning',
+            html: p.final
+              ? 'Este era el último intento: la suscripción quedará <strong>suspendida</strong>.'
+              : 'Revisa que tu tarjeta esté activa y que tengas saldo disponible antes del próximo intento.',
+          },
+        ),
       }),
     },
   ],
@@ -373,14 +405,20 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'email',
       build: (p) => ({
         title: `${subscriptionName(p)} quedó suspendida`,
-        body: subscriptionEmail(p, `Tu suscripción a ${subscriptionName(p)} está suspendida`,
+        body: subscriptionEmail(
+          p,
+          `Tu suscripción a ${subscriptionName(p)} está suspendida`,
           'No pudimos cobrar tu suscripción después de 3 reintentos, así que la suspendimos y no haremos más cobros.',
           [
             ['Servicio', subscriptionName(p)],
             ['Valor mensual', `${formatAmount(p.amount)} ${currencyOf(p)}`],
             ['Último motivo', typeof p.reason === 'string' ? p.reason : 'Cobro rechazado'],
           ],
-          { tone: 'danger', html: 'Para reactivarla, entra a <strong>Mis suscripciones</strong> en la app y toca <strong>Reactivar</strong>: cobraremos el mes en ese momento.' }),
+          {
+            tone: 'danger',
+            html: 'Para reactivarla, entra a <strong>Mis suscripciones</strong> en la app y toca <strong>Reactivar</strong>: cobraremos el mes en ese momento.',
+          },
+        ),
       }),
     },
   ],
@@ -393,16 +431,19 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'in_app',
       build: (p) => ({
         title: p.field === 'daily_limit' ? 'Cambiaste el límite diario de tu tarjeta' : cardOnlineTitle(p),
-        body: p.field === 'daily_limit'
-          ? `El nuevo límite de compras de ${cardText(p)} es ${formatAmount(p.dailyLimit)} ${currencyOf(p)} al día.`
-          : `${p.onlineEnabled ? 'Ya puedes' : 'Ya no puedes'} usar ${cardText(p)} en tiendas online, apps y suscripciones.`,
+        body:
+          p.field === 'daily_limit'
+            ? `El nuevo límite de compras de ${cardText(p)} es ${formatAmount(p.dailyLimit)} ${currencyOf(p)} al día.`
+            : `${p.onlineEnabled ? 'Ya puedes' : 'Ya no puedes'} usar ${cardText(p)} en tiendas online, apps y suscripciones.`,
       }),
     },
     {
       channel: 'email',
       build: (p) => ({
         title: p.field === 'daily_limit' ? 'Cambiaste el límite diario de tu tarjeta' : cardOnlineTitle(p),
-        body: subscriptionEmail(p, p.field === 'daily_limit' ? 'Nuevo límite diario de compras 🔒' : `${cardOnlineTitle(p)} 🔒`,
+        body: subscriptionEmail(
+          p,
+          p.field === 'daily_limit' ? 'Nuevo límite diario de compras 🔒' : `${cardOnlineTitle(p)} 🔒`,
           'Se hizo este cambio en los controles de tu tarjeta:',
           [
             ['Tarjeta', cardText(p)],
@@ -411,7 +452,11 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
               : ['Compras por internet', p.onlineEnabled ? 'Activadas' : 'Desactivadas'],
             ['Fecha', formatBogotaDate(undefined)],
           ],
-          { tone: 'warning', html: 'Si no hiciste este cambio, <strong>congela tu tarjeta</strong> desde la app y cambia tu contraseña.' }),
+          {
+            tone: 'warning',
+            html: 'Si no hiciste este cambio, <strong>congela tu tarjeta</strong> desde la app y cambia tu contraseña.',
+          },
+        ),
       }),
     },
   ],
@@ -429,7 +474,9 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'email',
       build: (p) => ({
         title: `Compra rechazada en ${subscriptionName(p)}`,
-        body: subscriptionEmail(p, 'Rechazamos una compra con tu tarjeta ⚠️',
+        body: subscriptionEmail(
+          p,
+          'Rechazamos una compra con tu tarjeta ⚠️',
           'Intentaron hacer una compra con tu tarjeta y no la aprobamos.',
           [
             ['Comercio', subscriptionName(p)],
@@ -438,7 +485,8 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
             ['Tarjeta', cardText(p)],
             ['Motivo', typeof p.reason === 'string' ? p.reason : 'Compra rechazada'],
           ],
-          { tone: 'warning', html: 'Si no reconoces esta compra, <strong>congela tu tarjeta</strong> desde la app.' }),
+          { tone: 'warning', html: 'Si no reconoces esta compra, <strong>congela tu tarjeta</strong> desde la app.' },
+        ),
       }),
     },
   ],
@@ -511,9 +559,10 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
       channel: 'email',
       when: (p) => p.intentos >= 5, // debe coincidir con MAX_INTENTOS_FALLIDOS de auth-service
       build: (p) => {
-        const displayName = typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
-          ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
-          : 'Cliente';
+        const displayName =
+          typeof p.nombreCompleto === 'string' && p.nombreCompleto.trim()
+            ? p.nombreCompleto.trim().replace(/[\r\n]+/g, ' ')
+            : 'Cliente';
         const name = escapeHtml(displayName);
         const attempts = Number.isFinite(Number(p.intentos)) ? Number(p.intentos) : 5;
         const eventDate = typeof p.fechaHora === 'string' ? new Date(p.fechaHora) : new Date();

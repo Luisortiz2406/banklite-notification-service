@@ -11,7 +11,13 @@ export class AdminAuditService {
   /** Registra una acción. Con `manager`, queda en la misma transacción que el cambio. */
   async record(
     staff: StaffPrincipal,
-    entry: { action: string; targetType: string; targetId: string; reason?: string | null; details?: Record<string, unknown> },
+    entry: {
+      action: string;
+      targetType: string;
+      targetId: string;
+      reason?: string | null;
+      details?: Record<string, unknown>;
+    },
     manager?: EntityManager,
   ) {
     const repo = manager ? manager.getRepository(AdminAudit) : this.repo;

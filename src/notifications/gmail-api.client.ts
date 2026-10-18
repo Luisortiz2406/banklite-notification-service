@@ -31,7 +31,10 @@ export class GmailApiClient {
   private accessTokenExpiresAt = 0;
   private pendingToken: Promise<string> | null = null;
 
-  constructor(private readonly creds: GmailCredentials, loggerContext: string) {
+  constructor(
+    private readonly creds: GmailCredentials,
+    loggerContext: string,
+  ) {
     this.logger = new Logger(loggerContext);
   }
 
@@ -84,7 +87,9 @@ export class GmailApiClient {
             'Ningún correo se enviará hasta entonces.',
         );
       }
-      throw new Error(`No se pudo renovar el access token de Gmail: ${body.error ?? res.status} ${body.error_description ?? ''}`.trim());
+      throw new Error(
+        `No se pudo renovar el access token de Gmail: ${body.error ?? res.status} ${body.error_description ?? ''}`.trim(),
+      );
     }
     const expiresInMs = (body.expires_in ?? 3600) * 1000;
     this.accessToken = body.access_token;
