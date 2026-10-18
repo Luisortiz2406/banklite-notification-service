@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
@@ -10,6 +10,6 @@ async function bootstrap() {
   // Sin CORS: el navegador solo habla con el api-gateway, que es quien decide los orígenes.
   const port = process.env.PORT ?? 3005;
   await app.listen(port);
-  console.log(`Notification Service escuchando en http://localhost:${port}`);
+  new Logger('Bootstrap').log(`Notification Service escuchando en http://localhost:${port}`);
 }
 bootstrap();
