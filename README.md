@@ -169,7 +169,7 @@ todas se configuran como variables del servicio, nunca en el código.
 
 ## Pruebas
 
-`npm test` (Jest, sin base de datos): textos de los avisos, p. ej. el correo de `account.closed` (fecha, cuentas enmascaradas, nombre escapado). Las reglas de negocio se prueban de punta a punta con los scripts de `scripts/pruebas/` del repositorio principal.
+`npm test` (Jest, sin base de datos): textos de los avisos, p. ej. el correo de `account.closed` (fecha, cuentas enmascaradas, contacto de soporte, nombre escapado). Las reglas de negocio se prueban de punta a punta con los scripts de `scripts/pruebas/` del repositorio principal.
 
 ## Despliegue
 

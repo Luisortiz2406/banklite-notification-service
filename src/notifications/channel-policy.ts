@@ -573,11 +573,11 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
             ['Fecha de cancelación', `${formatBogotaDate(p.cerradaEn)} (hora de Colombia)`],
             ['Cuentas cerradas', closedAccounts(p)],
             ['Tarjeta virtual', 'Cancelada'],
-            ['Puntos Banklite', 'Perdidos'],
+            ['Puntos Banklite', 'Tus Puntos Banklite dejan de estar disponibles'],
           ],
           {
             tone: 'warning',
-            html: '<strong>¿No fuiste tú?</strong> Comunícate de inmediato con nuestro equipo de soporte. Por obligación legal conservamos la información de tus cuentas y movimientos durante 10 años (plazo referencial del Código de Comercio); no la usamos para ningún otro fin.',
+            html: '<strong>¿No fuiste tú?</strong> Escríbenos de inmediato a <a href="mailto:ayuda@banklite.co" style="color:#18794e;font-weight:700">ayuda@banklite.co</a> o llama a la Línea Banklite 601 000 0000 (lunes a sábado, 7 a. m. a 8 p. m.). Como ya no puedes entrar a la app, ese es el canal para ayudarte.<br><br>Por obligación legal conservamos la información de tus cuentas y movimientos durante 10 años (plazo referencial del Código de Comercio); no la usamos para ningún otro fin.',
           },
         ),
       }),
