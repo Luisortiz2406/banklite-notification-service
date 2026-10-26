@@ -119,6 +119,16 @@ function subscriptionEmail(
 </div>`;
 }
 
+/** Números de cuenta enmascarados (····1234) de account.closed; nunca el número completo. */
+function closedAccounts(p: Record<string, any>): string {
+  const list = Array.isArray(p.cuentas) ? p.cuentas : [];
+  const masked = list
+    .map((item: unknown) => (typeof item === 'string' ? item : (item as any)?.accountNumber))
+    .filter((value: unknown): value is string => typeof value === 'string' && /^\d{4,}$/.test(value))
+    .map((value: string) => `····${value.slice(-4)}`);
+  return masked.length ? masked.join(', ') : '—';
+}
+
 /**
  * Mapa evento -> reglas por canal. Este archivo es la "tabla" del diseño que
  * hablamos: un mismo evento puede generar 0, 1 o varias filas (una por canal),
@@ -545,6 +555,32 @@ export const CHANNEL_POLICY: Record<string, ChannelRule[]> = {
 </div>`,
         };
       },
+    },
+  ],
+
+  // Publicado por Account Service cuando el cliente cancela su cuenta. Solo correo:
+  // el cliente ya no puede iniciar sesión para ver un aviso dentro de la app.
+  'account.closed': [
+    {
+      channel: 'email',
+      build: (p) => ({
+        title: 'BankLite — Confirmamos la cancelación de tu cuenta',
+        body: subscriptionEmail(
+          p,
+          'Tu cuenta fue cancelada',
+          'Confirmamos que cancelaste tu cuenta BankLite. Desde este momento ya no puedes iniciar sesión y todas tus sesiones abiertas se cerraron.',
+          [
+            ['Fecha de cancelación', `${formatBogotaDate(p.cerradaEn)} (hora de Colombia)`],
+            ['Cuentas cerradas', closedAccounts(p)],
+            ['Tarjeta virtual', 'Cancelada'],
+            ['Puntos Banklite', 'Tus Puntos Banklite dejan de estar disponibles'],
+          ],
+          {
+            tone: 'warning',
+            html: '<strong>¿No fuiste tú?</strong> Escríbenos de inmediato a <a href="mailto:ayuda@banklite.co" style="color:#18794e;font-weight:700">ayuda@banklite.co</a> o llama a la Línea Banklite 601 000 0000 (lunes a sábado, 7 a. m. a 8 p. m.). Como ya no puedes entrar a la app, ese es el canal para ayudarte.<br><br>Por obligación legal conservamos la información de tus cuentas y movimientos durante 10 años (plazo referencial del Código de Comercio); no la usamos para ningún otro fin.',
+          },
+        ),
+      }),
     },
   ],
 

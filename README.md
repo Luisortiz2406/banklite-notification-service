@@ -26,7 +26,7 @@ para que procesar el mismo evento dos veces no duplique el aviso.
 | | |
 |---|---|
 | Publica eventos | — |
-| Consume eventos | `usuario_autenticado`, `intento_fallido_login`, `account.created` (auth)<br>`identity.rejected`, `identity.email_confirmed` (kyc)<br>`transaction.completed` (ledger)<br>`fraud.alert` (fraud)<br>`subscription.*`, `card.controls_changed`, `card.charge_declined` (card) |
+| Consume eventos | `usuario_autenticado`, `intento_fallido_login`, `account.created` (auth)<br>`identity.rejected`, `identity.email_confirmed` (kyc)<br>`transaction.completed` (ledger)<br>`fraud.alert` (fraud)<br>`account.closed` (account: correo que confirma la cancelación de la cuenta)<br>`subscription.*`, `card.controls_changed`, `card.charge_declined` (card) |
 | Llama a | — |
 | Lo llaman | auth-service: `/otp/*` y `POST /notifications`<br>api-gateway (rutas `/notifications/*`) |
 | Integraciones externas | Gmail API (OAuth)<br>WhatsApp Cloud API (Meta) con plantilla de OTP |
@@ -169,7 +169,7 @@ todas se configuran como variables del servicio, nunca en el código.
 
 ## Pruebas
 
-Las reglas de negocio se prueban de punta a punta con los scripts de `scripts/pruebas/` del repositorio principal.
+`npm test` (Jest, sin base de datos): textos de los avisos, p. ej. el correo de `account.closed` (fecha, cuentas enmascaradas, contacto de soporte, nombre escapado). Las reglas de negocio se prueban de punta a punta con los scripts de `scripts/pruebas/` del repositorio principal.
 
 ## Despliegue
 
@@ -196,3 +196,4 @@ despliega desde su propio repositorio.
 | [banklite-ledger-service](https://github.com/Luisortiz2406/banklite-ledger-service) | **Recibe:** `transaction.completed` |
 | [banklite-fraud-service](https://github.com/Luisortiz2406/banklite-fraud-service) | **Recibe:** `fraud.alert` |
 | [banklite-card-service](https://github.com/Luisortiz2406/banklite-card-service) | **Recibe:** `subscription.*`, `card.controls_changed`, `card.charge_declined` |
+| [banklite-account-service](https://github.com/Luisortiz2406/banklite-account-service) | **Recibe:** `account.closed` (correo de confirmación de la cancelación) |
