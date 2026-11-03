@@ -14,6 +14,7 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { Notification } from './entities/notification.entity';
 import { UserContact } from './entities/user-contact.entity';
 import { MailerService } from './mailer.service';
+import { currentNames } from './legacy-names';
 
 // Eventos cuyo payload trae el contacto del usuario; sirven para reconstruir la
 // proyección de usuarios registrados antes de que existiera user_contacts.
@@ -260,7 +261,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     if (requesterId !== idUser) {
       throw new ForbiddenException('No puedes consultar las notificaciones de otro usuario');
     }
-    return this.repo.find({
+    const rows = await this.repo.find({
       where: {
         idUser,
         ...(channel ? { channel: channel as Notification['channel'] } : {}),
@@ -268,6 +269,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       },
       order: { createdAt: 'DESC' },
     });
+    // Las notificaciones viejas pueden traer marcas reales: se muestran con el nombre vigente.
+    return rows.map((row) => ({ ...row, title: currentNames(row.title), body: currentNames(row.body) }));
   }
 
   /** PUT /notifications/:id/read */
@@ -278,7 +281,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       throw new ForbiddenException('No puedes modificar notificaciones de otro usuario');
     }
     row.read = true;
-    return this.repo.save(row);
+    const saved = await this.repo.save(row);
+    return { ...saved, title: currentNames(saved.title), body: currentNames(saved.body) };
   }
 
   /** Atajo usado por POST /notifications (DTO -> handleEvent). */
