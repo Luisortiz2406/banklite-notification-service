@@ -18,6 +18,7 @@ import { StaffAuthGuard, StaffRoles } from '../common/staff/staff-auth.guard';
 import { EventConsumerService } from '../events/event-consumer.service';
 import { Notification } from './entities/notification.entity';
 import { NotificationsService } from './notifications.service';
+import { currentNames } from './legacy-names';
 
 export class AdminNotificationsQueryDto {
   @IsOptional() @IsUUID() idUser?: string;
@@ -59,7 +60,10 @@ export class AdminNotificationsController {
       take: limit,
     });
     // Sin el cuerpo completo ni metadata: el panel no necesita el contenido de los correos.
-    const items = rows.map(({ body: _b, metadata: _m, dedupeKey: _d, ...rest }) => rest);
+    const items = rows.map(({ body: _b, metadata: _m, dedupeKey: _d, ...rest }) => ({
+      ...rest,
+      title: currentNames(rest.title),
+    }));
     return { items, total, page, limit };
   }
 
@@ -89,7 +93,7 @@ export class AdminNotificationsController {
       details: { status: row.status },
     });
     const { body: _b, metadata: _m, dedupeKey: _d, ...rest } = row;
-    return rest;
+    return { ...rest, title: currentNames(rest.title) };
   }
 
   @Get('dlq')
