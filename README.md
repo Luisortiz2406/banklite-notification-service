@@ -171,6 +171,17 @@ todas se configuran como variables del servicio, nunca en el código.
 
 `npm test` (Jest, sin base de datos): textos de los avisos, p. ej. el correo de `account.closed` (fecha, cuentas enmascaradas, contacto de soporte, nombre escapado). Las reglas de negocio se prueban de punta a punta con los scripts de `scripts/pruebas/` del repositorio principal.
 
+Todas las pruebas usan repositorios en memoria y simulan Gmail, WhatsApp (Cloud API de Meta) y RabbitMQ: nunca se envía un correo ni un mensaje real. Cubren:
+
+- **Plantillas** de cada evento (correo y aviso en la app): cada canal con su propio texto, el nombre escapado, la cuenta enmascarada, el asunto sin saltos de línea, y datos incompletos o de tipo equivocado sin fallar.
+- **Canales y entrega** (`notifications.service.spec.ts`): un aviso no se duplica por reentrega, sin correo del destinatario no se crea el correo, el contacto se completa del historial, y un correo fallido se reintenta a 1, 5, 15 y 60 minutos antes de quedar como fallido.
+- **Gmail** (`mailer.service.spec.ts`): el remitente siempre es `GMAIL_SENDER`, el token se renueva una sola vez aunque lleguen varios correos a la vez, y `invalid_grant` se explica claro.
+- **WhatsApp** (`otp.service.spec.ts`): el código solo se guarda como hash, vence a los 5 minutos, tiene 5 intentos, no se reenvía antes de 60 s y un fallo de Meta no deja un código "enviado".
+- **Consumidor de eventos** (`event-consumer.service.spec.ts`): se suscribe solo a los eventos con avisos, `account.closed` llega hasta el correo de cancelación, y lo que falla va a reintento o a la DLQ.
+- Panel administrativo, guards, `/health` y validación de configuración.
+
+**Cobertura:** el pipeline la muestra en el resumen de cada corrida y exige un mínimo de 70 % de líneas y 50 % de ramas (`umbral-lineas` y `umbral-ramas` en `deploy.yml`). Hoy está en 95,3 % de líneas y 90,7 % de ramas.
+
 ## Despliegue
 
 Lo despliega **GitHub Actions** (`.github/workflows/deploy.yml`, que usa el workflow
