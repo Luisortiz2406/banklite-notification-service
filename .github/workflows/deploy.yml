@@ -24,4 +24,6 @@ jobs:
     uses: Luisortiz2406/banklite-pipelines/.github/workflows/servicio.yml@v1
     with:
       servicio: notification-service
+      umbral-lineas: 70
+      umbral-ramas: 50
     secrets: inherit
