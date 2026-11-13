@@ -16,9 +16,11 @@ import { AdminAuditService } from './common/staff/admin-audit.service';
 import { StaffAuthGuard } from './common/staff/staff-auth.guard';
 import { AdminNotificationsController } from './notifications/admin-notifications.controller';
 import { validateEnv } from './config/env.validation';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
+    MetricsModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
