@@ -181,6 +181,24 @@ Todas las pruebas usan repositorios en memoria y simulan Gmail, WhatsApp (Cloud 
 - **Consumidor de eventos** (`event-consumer.service.spec.ts`): se suscribe solo a los eventos con avisos, `account.closed` llega hasta el correo de cancelación, y lo que falla va a reintento o a la DLQ.
 - Panel administrativo, guards, `/health` y validación de configuración.
 
+### Prueba de integración: aviso de una transferencia de punta a punta
+
+Archivo: `src/notifications/notifications.integration.spec.ts` (suite «Aviso de una transferencia de punta a punta (RabbitMQ, política de canales, Gmail y HTTP)»).
+
+Levanta la app Nest de verdad en un puerto libre y hace peticiones HTTP reales (con el `fetch` nativo, sin dependencias nuevas). El mensaje entra por el consumidor real de RabbitMQ, la política de canales y `NotificationsService` crean los avisos, el correo sale por `MailerService` y el cliente de la Gmail API, y el cliente consulta con su JWT. Solo se simulan los bordes: los repositorios son tablas en memoria, RabbitMQ es un canal falso y Gmail es un `fetch` simulado (nunca se envía un correo real). Casos:
+
+- Una transferencia enviada llega por RabbitMQ: aviso en la app visible por `GET /notifications/:id_user` y un único correo al destinatario por la Gmail API; `?channel=email` lo muestra como enviado.
+- Marcar leído (`PUT /notifications/:id/read`) lo saca de `?unread=true`; otra persona recibe 403 y sin token, 401.
+- La misma entrega de RabbitMQ dos veces no duplica avisos ni correo.
+- Gmail caído: el aviso de la app llega, el correo queda `pending` con su reintento y luego se reenvía desde el panel (`retryNow`).
+- El correo de bienvenida por `POST /notifications` (ruta interna) deja el contacto, y el comprobante posterior, que no trae correo en el evento, se envía a ese contacto.
+- La ruta interna exige la clave de un servicio de confianza (401) y un cuerpo válido (400).
+- Un mensaje sin `idUser` se descarta con ack y no crea nada.
+
+```bash
+npm test -- notifications.integration   # solo esta prueba (no necesita base de datos)
+```
+
 **Cobertura:** el pipeline la muestra en el resumen de cada corrida y exige un mínimo de 70 % de líneas y 50 % de ramas (`umbral-lineas` y `umbral-ramas` en `deploy.yml`). Hoy está en 95,3 % de líneas y 90,7 % de ramas.
 
 ## Despliegue
